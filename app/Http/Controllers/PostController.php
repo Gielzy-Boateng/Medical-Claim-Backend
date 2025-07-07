@@ -104,6 +104,16 @@ class PostController extends Controller implements HasMiddleware
             ], 422);
         }
 
+        // 🚩 Check if user has enough claim_total left
+        $user = $request->user();
+        if ($fields['amount'] > $user->claim_total) {
+            return response()->json([
+                'message' => 'You have exhausted your claim limit.',
+                'errors' => ['amount' => ['You have exhausted your claim limit.']],
+                'success' => false
+            ], 422);
+        }
+
         // ENFORCE INITIAL WORKFLOW STATE
         $fields['stage'] = 'supervisor';
         $fields['status'] = 'pending';
@@ -117,7 +127,7 @@ class PostController extends Controller implements HasMiddleware
             $fields['description'] = json_encode($fields['description']);
 
             // POST CREATION: Create the post and associate it with the authenticated user
-            $post = $request->user()->posts()->create($fields);
+            $post = $user->posts()->create($fields);
 
             // DOCUMENT URL: Generate a public URL for the uploaded document
             $post->document_url = asset(Storage::url($filePath));
@@ -212,10 +222,19 @@ class PostController extends Controller implements HasMiddleware
             $post->stage = $nextStage;
             $post->status = 'pending';
         } else {
+            // Only deduct when account approves (final approval)
+            if ($currentStage === 'account' && $post->status !== 'approved') {
+                $claimUser = $post->user;
+                if ($claimUser->claim_total >= $post->amount) {
+                    $claimUser->claim_total -= $post->amount;
+                    $claimUser->save();
+                }
+            }
             $post->status = 'approved'; // Final approval
         }
         $post->flow_history = json_encode($history);
         $post->save();
+        $post->load('user');
 
         return response()->json(['message' => 'Claim moved to next stage', 'data' => $post]);
     }
@@ -351,15 +370,48 @@ class PostController extends Controller implements HasMiddleware
      */
     public function myHandledClaims(Request $request)
     {
-        $userId = $request->user()->id;
-        //!! Use JSON_CONTAINS to find claims where the user's ID appears as 'by' in any flow_history entry
-        $claims = Post::whereRaw("JSON_CONTAINS(flow_history, '" . $userId . "', '$[*].by')")
+        $userId = (int) $request->user()->id;
+
+        // Fetch all posts with non-empty flow_history
+        $posts = Post::whereNotNull('flow_history')
+            ->where('flow_history', '!=', '')
             ->with('user')
             ->orderBy('created_at', 'desc')
             ->get();
 
+        // Filter in PHP
+        $handled = $posts->filter(function ($post) use ($userId) {
+            $history = json_decode($post->flow_history, true) ?: [];
+            foreach ($history as $event) {
+                if (isset($event['by']) && (int)$event['by'] === $userId) {
+                    return true;
+                }
+            }
+            return false;
+        })->values();
+
         return response()->json([
-            'data' => $claims,
+            'data' => $handled,
+            'success' => true
+        ]);
+    }
+
+    /**
+     * Get all claims for the authenticated user, grouped by status.
+     */
+    public function myClaimsGrouped(Request $request)
+    {
+        $user = $request->user();
+        $claims = $user->posts()->with('user')->orderBy('created_at', 'desc')->get();
+
+        $grouped = [
+            'pending' => $claims->where('status', 'pending')->values(),
+            'approved' => $claims->where('status', 'approved')->values(),
+            'rejected' => $claims->where('status', 'rejected')->values(),
+        ];
+
+        return response()->json([
+            'data' => $grouped,
             'success' => true
         ]);
     }
