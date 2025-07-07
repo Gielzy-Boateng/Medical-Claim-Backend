@@ -30,30 +30,6 @@ class PostController extends Controller implements HasMiddleware
     }
 
 
-    //!!OLD STORE FUNCTION
-    /**
-     * Store a newly created resource in storage.
-     */
-    // public function store(Request $request)
-    // {
-    //     $fields = $request->validate([
-    //         'name'        => 'required|max:255',
-    //         'relation'    => 'required',
-    //         'description' => 'required',
-    //         'amount'      => 'required',
-    //         'department'  => 'required',
-    //         'document'    => 'required|file|mimes:pdf,jpg,jpeg,png|max:5048',
-    //     ]);
-
-    //     $filePath = $request->file('document')->store('claims', 'public');
-    //     $fields['document_path'] = $filePath;
-
-    //     $post = $request->user()->posts()->create($fields);
-
-    //     return $post;
-    // }
-
-
     //!!SHOW FUNCTION / SHOW ONE POST
     public function show(Post $post)
     {
@@ -63,13 +39,9 @@ class PostController extends Controller implements HasMiddleware
     }
 
 
-    /**
-     * !!NEWLY CREATED_USER_RESOURCES
-     * Store a newly created resource in storage.
-     *
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
-     */
+
+// !!NEWLY CREATED_USER_RESOURCES
+
     public function store(Request $request)
     {
         \Log::error('Store called', ['request' => $request->all()]);
@@ -82,7 +54,7 @@ class PostController extends Controller implements HasMiddleware
             ]);
         }
 
-        // ✅ VALIDATION: Validate all required fields with proper error messages
+        //!! ✅ VALIDATION: Validate all required fields with proper error messages
         $fields = $request->validate([
             'name'        => 'required|max:255',
             'relation'    => 'required',
@@ -94,7 +66,7 @@ class PostController extends Controller implements HasMiddleware
             'document'    => 'required|file|mimes:pdf,jpg,jpeg,png|max:5048',
         ]);
 
-        // Enforce a max claim amount of 1000 per user
+        //!! Enforce a max claim amount of 1000 per user
         $maxAmount = 1000;
         if ($fields['amount'] > $maxAmount) {
             return response()->json([
@@ -104,7 +76,7 @@ class PostController extends Controller implements HasMiddleware
             ], 422);
         }
 
-        // 🚩 Check if user has enough claim_total left
+        //!! 🚩This Check if user has enough claim_total left
         $user = $request->user();
         if ($fields['amount'] > $user->claim_total) {
             return response()->json([
@@ -114,25 +86,25 @@ class PostController extends Controller implements HasMiddleware
             ], 422);
         }
 
-        // ENFORCE INITIAL WORKFLOW STATE
+        //!! ENFORCE INITIAL WORKFLOW STATE
         $fields['stage'] = 'supervisor';
         $fields['status'] = 'pending';
 
         try {
-            // FILE STORAGE: Store the uploaded document in the public disk under 'claims' folder
+            //!! FILE STORAGE: Store the uploaded document in the public disk under 'claims' folder
             $filePath = $request->file('document')->store('claims', 'public');
             $fields['document_path'] = $filePath;
 
-            // Store description as JSON
+            //!! Store description as JSON
             $fields['description'] = json_encode($fields['description']);
 
-            // POST CREATION: Create the post and associate it with the authenticated user
+            //!! POST CREATION: Create the post and associate it with the authenticated user
             $post = $user->posts()->create($fields);
 
-            // DOCUMENT URL: Generate a public URL for the uploaded document
+            //!! DOCUMENT URL: Generate a public URL for the uploaded document
             $post->document_url = asset(Storage::url($filePath));
 
-            // SUCCESS RESPONSE: Return a proper HTTP response with 201 status (Created)
+            //!! SUCCESS RESPONSE: Return a proper HTTP response with 201 status (Created)
             return response()->json([
                 'message' => 'Post created successfully',
                 'data' => $post,
@@ -140,7 +112,7 @@ class PostController extends Controller implements HasMiddleware
             ], 201);
 
         } catch (\Exception $e) {
-            // ERROR HANDLING: If file upload fails, clean up and return error
+            //!! ERROR HANDLING: If file upload fails, clean up and return error
             if (isset($filePath) && Storage::disk('public')->exists($filePath)) {
                 Storage::disk('public')->delete($filePath);
             }
@@ -168,9 +140,8 @@ class PostController extends Controller implements HasMiddleware
     }
 
 
-    /**
-     * Update the specified resource in storage.
-     */
+
+    //!!UPDATE FUNCTION
     public function update(Request $request, Post $post)
     {
         Gate::authorize('modify', $post);
@@ -184,9 +155,8 @@ class PostController extends Controller implements HasMiddleware
         return $post;
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
+
+    //!!DELETE FUNCTION
     public function destroy(Post $post)
     {
         Gate::authorize('modify', $post);
@@ -239,6 +209,8 @@ class PostController extends Controller implements HasMiddleware
         return response()->json(['message' => 'Claim moved to next stage', 'data' => $post]);
     }
 
+
+    //!!REJECT FUNCTION
     public function reject(Post $post, Request $request)
     {
         $user = $request->user();
@@ -316,10 +288,8 @@ class PostController extends Controller implements HasMiddleware
         return $this->pendingClaimsByStage('account');
     }
 
-    /**
-     * Get all claims for a given stage (role), regardless of status.
-     * Used for dashboards where a role wants to see all claims they've handled.
-     */
+
+    //!!ALL CLAIMS BY STAGE IRRESPECTIVE OF STATUS
     public function allClaimsByStage($stage)
     {
         $claims = Post::where('stage', $stage)
@@ -333,53 +303,44 @@ class PostController extends Controller implements HasMiddleware
         ]);
     }
 
-    /**
-     * Get all claims for supervisor (all statuses).
-     */
+
+    //!!ALL CLAIMS FOR SUPERVISOR IRRESPECTIVE OF STATUS
     public function allSupervisorClaims()
     {
         return $this->allClaimsByStage('supervisor');
     }
 
-    /**
-     * Get all claims for manager (all statuses).
-     */
+    //!!ALL CLAIMS FOR MANAGER IRRESPECTIVE OF STATUS
     public function allManagerClaims()
     {
         return $this->allClaimsByStage('manager');
     }
 
-    /**
-     * Get all claims for HR (all statuses).
-     */
+    //!!ALL CLAIMS FOR HR IRRESPECTIVE OF STATUS
     public function allHrClaims()
     {
         return $this->allClaimsByStage('hr');
     }
 
-    /**
-     * Get all claims for account (all statuses).
-     */
+    //!!ALL CLAIMS FOR ACCOUNT IRRESPECTIVE OF STATUS
     public function allAccountClaims()
     {
         return $this->allClaimsByStage('account');
     }
 
-    /**
-     * ??Get all claims the authenticated user has approved or rejected (appears in flow_history).
-     */
+    //!!MY HANDLED CLAIMS FOR AUTHENTICATED USER FROM FLOW_HISTORY
     public function myHandledClaims(Request $request)
     {
         $userId = (int) $request->user()->id;
 
-        // Fetch all posts with non-empty flow_history
+        //!! Fetch all posts with non-empty flow_history
         $posts = Post::whereNotNull('flow_history')
             ->where('flow_history', '!=', '')
             ->with('user')
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // Filter in PHP
+        //!! Filter in PHP
         $handled = $posts->filter(function ($post) use ($userId) {
             $history = json_decode($post->flow_history, true) ?: [];
             foreach ($history as $event) {
@@ -396,9 +357,7 @@ class PostController extends Controller implements HasMiddleware
         ]);
     }
 
-    /**
-     * Get all claims for the authenticated user, grouped by status.
-     */
+    //!!MY CLAIMS GROUPED BY STATUS FOR AUTHENTICATED USER
     public function myClaimsGrouped(Request $request)
     {
         $user = $request->user();

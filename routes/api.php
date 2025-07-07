@@ -10,9 +10,6 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 
-// Route::get('/',function (Request $request){
-//     return 'API';
-// });
 //!!API_ENDPOINTS - All API endpoints are defined here
 Route::apiResource('post', PostController::class);
 
