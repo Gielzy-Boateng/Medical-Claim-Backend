@@ -14,11 +14,13 @@ return new class extends Migration
         Schema::create('posts', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('supervisor_id')->nullable()->constrained('users')->nullOnDelete();
             $table->string('name');
             $table->string('relation');
             $table->text('department');
             $table->text('description');
             $table->string('amount');
+            $table->json('document_paths')->nullable();
             $table->timestamps();
         });
     }

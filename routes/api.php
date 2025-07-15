@@ -70,3 +70,12 @@ Route::get('/my-claims-grouped', [\App\Http\Controllers\PostController::class, '
 
 //!!USERS - Get all users for the hr
 Route::get('/users', [AuthController::class, 'getAllUsers'])->middleware(['auth:sanctum', 'role:hr']);
+
+//!!GET_ALL_SUPERVISORS - Get all users with supervisor role
+Route::get('/supervisors', [AuthController::class, 'getAllSupervisors'])->middleware('auth:sanctum');
+
+
+//!!PRODUCTION_TEST
+Route::get('/ping', function () {
+    return response()->json(['message' => 'pong']);
+});

@@ -54,4 +54,10 @@ class User extends Authenticatable
        return  $this->hasMany(Post::class);
     }
 
+    // All posts where this user is the supervisor
+    public function supervisedPosts()
+    {
+        return $this->hasMany(Post::class, 'supervisor_id');
+    }
+
 }

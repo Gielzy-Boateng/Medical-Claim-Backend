@@ -34,7 +34,8 @@ class PostController extends Controller implements HasMiddleware
     public function show(Post $post)
     {
         $post->load('user'); // Eager load the user relationship
-        $post->document_url = asset(Storage::url($post->document_path));
+        // For backward compatibility, add document_url for the first document
+        $post->document_url = $post->document_paths[0] ?? ($post->document_path ? asset(Storage::url($post->document_path)) : null);
         return $post;
     }
 
@@ -63,7 +64,9 @@ class PostController extends Controller implements HasMiddleware
             'description.*.price' => 'required|numeric|min:0',
             'department'  => 'required',
             'amount'      => 'required|numeric|min:0',
-            'document'    => 'required|file|mimes:pdf,jpg,jpeg,png|max:5048',
+            'documents'   => 'required|array|max:5',
+            'documents.*' => 'file|mimes:pdf,jpg,jpeg,png|max:5048',
+            'supervisor_id' => 'required|exists:users,id'
         ]);
 
         //!! Enforce a max claim amount of 1000 per user
@@ -91,9 +94,14 @@ class PostController extends Controller implements HasMiddleware
         $fields['status'] = 'pending';
 
         try {
-            //!! FILE STORAGE: Store the uploaded document in the public disk under 'claims' folder
-            $filePath = $request->file('document')->store('claims', 'public');
-            $fields['document_path'] = $filePath;
+            //!! FILE STORAGE: Store up to 5 uploaded documents in the public disk under 'claims' folder
+            $documentPaths = [];
+            foreach ($request->file('documents') as $file) {
+                $documentPaths[] = $file->store('claims', 'public');
+            }
+            $fields['document_paths'] = json_encode($documentPaths);
+            // For backward compatibility, store the first document's path in document_path
+            $fields['document_path'] = $documentPaths[0] ?? null;
 
             //!! Store description as JSON
             $fields['description'] = json_encode($fields['description']);
@@ -101,8 +109,8 @@ class PostController extends Controller implements HasMiddleware
             //!! POST CREATION: Create the post and associate it with the authenticated user
             $post = $user->posts()->create($fields);
 
-            //!! DOCUMENT URL: Generate a public URL for the uploaded document
-            $post->document_url = asset(Storage::url($filePath));
+            //!! DOCUMENT URLS: Generate public URLs for the uploaded documents
+            $post->document_urls = array_map(fn($path) => asset(\Storage::url($path)), $documentPaths);
 
             //!! SUCCESS RESPONSE: Return a proper HTTP response with 201 status (Created)
             return response()->json([
@@ -113,8 +121,12 @@ class PostController extends Controller implements HasMiddleware
 
         } catch (\Exception $e) {
             //!! ERROR HANDLING: If file upload fails, clean up and return error
-            if (isset($filePath) && Storage::disk('public')->exists($filePath)) {
-                Storage::disk('public')->delete($filePath);
+            if (!empty($documentPaths)) {
+                foreach ($documentPaths as $path) {
+                    if (\Storage::disk('public')->exists($path)) {
+                        \Storage::disk('public')->delete($path);
+                    }
+                }
             }
 
             return response()->json([
@@ -141,7 +153,7 @@ class PostController extends Controller implements HasMiddleware
 
 
 
-    //!!UPDATE FUNCTION
+    //!! UPDATE FUNCTION
     public function update(Request $request, Post $post)
     {
         Gate::authorize('modify', $post);
@@ -242,7 +254,7 @@ class PostController extends Controller implements HasMiddleware
     /**
      *!! Get all claims pending action for a given stage (role).
      */
-    public function pendingClaimsByStage($stage)
+    private function pendingClaimsByStage($stage)
     {
         $claims = Post::where('stage', $stage)
             ->where('status', 'pending')
@@ -261,7 +273,17 @@ class PostController extends Controller implements HasMiddleware
      */
     public function supervisorClaims()
     {
-        return $this->pendingClaimsByStage('supervisor');
+        $user = auth()->user();
+        $claims = \App\Models\Post::where('stage', 'supervisor')
+            ->where('status', 'pending')
+            ->where('supervisor_id', $user->id)
+            ->with('user')
+            ->orderBy('created_at', 'desc')
+            ->get();
+        return response()->json([
+            'data' => $claims,
+            'success' => true
+        ]);
     }
 
     /**

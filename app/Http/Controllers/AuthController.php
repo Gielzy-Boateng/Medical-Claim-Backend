@@ -100,12 +100,12 @@ class AuthController extends Controller
        //?? Email domain validation for role assignment
        $emailDomain = strtolower(explode('@', $targetUser->email)[1] ?? '');
 
-       //??allowed domains for each role
+       //?? allowed domains for each role
        $roleDomains = [
            'hr' => ['hr.company.com', 'humanresources.company.com'],
            'account' => ['finance.company.com', 'accounting.company.com'],
            'manager' => ['management.company.com', 'managers.company.com'],
-           'supervisor' => ['supervisors.company.com', 'teamleads.company.com'],
+           'supervisor' => ['gmail.com', 'gmail.com'],
            'employee' => ['company.com', 'staff.company.com'] // Default domain
        ];
 
@@ -164,5 +164,15 @@ public function getAllUsers(Request $request)
         'success' => true
     ]);
 }
+
+    //!! Get all supervisors (for employee claim assignment)
+    public function getAllSupervisors(Request $request)
+    {
+        $supervisors = User::where('role', 'supervisor')->select('id', 'name', 'email')->get();
+        return response()->json([
+            'data' => $supervisors,
+            'success' => true
+        ]);
+    }
 
 }
